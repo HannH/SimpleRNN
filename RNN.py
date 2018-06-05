@@ -18,11 +18,27 @@ class RNN:
             return active_fn(tf.matmul(input, w) + tf.matmul(state, u) + b)
 
 
+class GRU(RNN):
+    def __init__(self, batchsize, length):
+        super().__init__(batchsize, length)
+        self.hidden = tf.Variable(tf.zeros((self.batchsize, self.outputshape)), trainable=False)
+        self.candidate = tf.Variable(tf.random_uniform((self.batchsize, self.outputshape)), trainable=False)
+
+    def build(self, inputs, reuse=False):
+        with tf.variable_scope('GRU', reuse=reuse):
+            update = self._input_add_state(inputs, self.hidden, name='update')
+            reset = self._input_add_state(inputs, self.hidden, name='reset')
+            self.hidden = tf.multiply(1 - update, self.hidden) + \
+                          tf.multiply(update,
+                                      self._input_add_state(inputs, tf.multiply(reset, self.hidden), name='forget'))
+        return self.hidden
+
+
 class LSTM(RNN):
     def __init__(self, batchsize, length):
         super().__init__(batchsize, length)
-        self.hidden = tf.Variable(tf.zeros((self.batchsize, self.outputshape)),trainable=False)
-        self.candidate = tf.Variable(tf.random_uniform((self.batchsize, self.outputshape)),trainable=False)
+        self.hidden = tf.Variable(tf.zeros((self.batchsize, self.outputshape)), trainable=False)
+        self.candidate = tf.Variable(tf.random_uniform((self.batchsize, self.outputshape)), trainable=False)
 
     def build(self, inputs, reuse=False):
         with tf.variable_scope('LSTM', reuse=reuse):
@@ -30,7 +46,8 @@ class LSTM(RNN):
             inputgate = self._input_add_state(inputs, self.hidden, name='inputgate')
             output = self._input_add_state(inputs, self.hidden, name='output')
             self.candidate = tf.multiply(forget, self.candidate) + tf.multiply(inputgate,
-                                                                               self._input_add_state(inputs, self.hidden,
+                                                                               self._input_add_state(inputs,
+                                                                                                     self.hidden,
                                                                                                      tf.nn.tanh,
                                                                                                      name='candi'))
             self.hidden = tf.multiply(output, self.candidate)
@@ -65,9 +82,9 @@ def test():
     test_input, test_gt, test_var = test_data.get_next()
     tinputs, test_input = tf.reshape(tinputs, (batchsize, 10)), tf.reshape(test_input, (batchsize, 10))
 
-    net = LSTM(batchsize, 10)
+    net = GRU(batchsize, 10)
     output = net.build(tinputs)
-    net = LSTM(batchsize, 10)
+    net = GRU(batchsize, 10)
     test_output = net.build(test_input, True)
     loss = tf.reduce_mean(tf.abs(output - tgroundtruth))
     train_opt = tf.train.RMSPropOptimizer(1e-3).minimize(loss)
@@ -78,7 +95,7 @@ def test():
         for epoch in range(5000):
             sess.run(train_opt)
             if not epoch % 50:
-                src, gt, pred = sess.run([test_var, test_gt, test_output[0]])
+                src, gt, pred = sess.run([test_var, test_gt, test_output])
                 # update plotting
                 plt.cla()
                 fig.set_size_inches(7, 4)
@@ -90,7 +107,7 @@ def test():
                 plt.legend(fontsize=15)
                 plt.draw()
                 plt.pause(0.1)
-                # plt.savefig(r'G:\temp\blog\gif\\' + str(epoch) + '.png', dpi=100)
+                plt.savefig(r'G:\temp\blog\gif\\' + str(epoch) + '.png', dpi=100)
 
 
 if __name__ == '__main__':
