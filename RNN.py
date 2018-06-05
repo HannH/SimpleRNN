@@ -65,12 +65,12 @@ def test():
     test_input, test_gt, test_var = test_data.get_next()
     tinputs, test_input = tf.reshape(tinputs, (batchsize, 10)), tf.reshape(test_input, (batchsize, 10))
 
-    cell = tf.nn.rnn_cell.LSTMCell(10,activation=lambda x:x)
-    state = cell.zero_state(batchsize, tf.float32)
-    test_state = cell.zero_state(batchsize, tf.float32)
-    output, state = tf.nn.static_rnn(cell, [tinputs], initial_state=state, dtype=tf.float32)
-    test_output, _ = tf.nn.static_rnn(cell, [test_input], initial_state=test_state, dtype=tf.float32)
-    train_opt = tf.train.RMSPropOptimizer(1e-3).minimize(tf.reduce_mean(tf.abs(output - tgroundtruth)))
+    net = LSTM(batchsize, 10)
+    output = net.build(tinputs)
+    net = LSTM(batchsize, 10)
+    test_output = net.build(test_input, True)
+    loss = tf.reduce_mean(tf.abs(output - tgroundtruth))
+    train_opt = tf.train.RMSPropOptimizer(1e-3).minimize(loss)
     gpu_options = tf.GPUOptions(allow_growth=True)
     with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placement=True)) as sess:
         sess.run(tf.global_variables_initializer())
@@ -90,7 +90,7 @@ def test():
                 plt.legend(fontsize=15)
                 plt.draw()
                 plt.pause(0.1)
-                plt.savefig(r'G:\temp\blog\gif\\' + str(epoch) + '.png', dpi=100)
+                # plt.savefig(r'G:\temp\blog\gif\\' + str(epoch) + '.png', dpi=100)
 
 
 if __name__ == '__main__':
