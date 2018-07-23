@@ -18,23 +18,35 @@ class RNN:
             return active_fn(tf.matmul(input, w) + tf.matmul(state, u) + b)
 
 
+class GRU(RNN):
+    def __init__(self, batchsize, length):
+        super().__init__(batchsize, length)
+        self.hidden = tf.Variable(tf.zeros((self.batchsize, self.outputshape)), trainable=False)
+
+    def build(self, inputs, reuse=False):
+        with tf.variable_scope('GRU', reuse=reuse):
+            update = self._input_add_state(inputs, self.hidden, name='update')
+            reset = self._input_add_state(inputs, self.hidden, name='reset')
+            hidden = tf.multiply(1 - update, self.hidden) + \
+                     tf.multiply(update, self._input_add_state(inputs, tf.multiply(reset, self.hidden), name='forget'))
+        return hidden
+
+
 class LSTM(RNN):
     def __init__(self, batchsize, length):
         super().__init__(batchsize, length)
-        self.hidden = tf.Variable(tf.zeros((self.batchsize, self.outputshape)),trainable=False)
-        self.candidate = tf.Variable(tf.random_uniform((self.batchsize, self.outputshape)),trainable=False)
+        self.hidden = tf.Variable(tf.zeros((self.batchsize, self.outputshape)), trainable=False)
+        self.candidate = tf.Variable(tf.random_uniform((self.batchsize, self.outputshape)), trainable=False)
 
     def build(self, inputs, reuse=False):
         with tf.variable_scope('LSTM', reuse=reuse):
             forget = self._input_add_state(inputs, self.hidden, name='forget')
             inputgate = self._input_add_state(inputs, self.hidden, name='inputgate')
             output = self._input_add_state(inputs, self.hidden, name='output')
-            self.candidate = tf.multiply(forget, self.candidate) + tf.multiply(inputgate,
-                                                                               self._input_add_state(inputs, self.hidden,
-                                                                                                     tf.nn.tanh,
-                                                                                                     name='candi'))
-            self.hidden = tf.multiply(output, self.candidate)
-        return self.hidden
+            candidate = tf.multiply(forget, self.candidate) + \
+                        tf.multiply(inputgate, self._input_add_state(inputs, self.hidden, tf.nn.tanh, name='candi'))
+            hidden = tf.multiply(output, candidate)
+        return hidden
 
 
 class Generator:
@@ -65,32 +77,35 @@ def test():
     test_input, test_gt, test_var = test_data.get_next()
     tinputs, test_input = tf.reshape(tinputs, (batchsize, 10)), tf.reshape(test_input, (batchsize, 10))
 
-    cell = tf.nn.rnn_cell.LSTMCell(10,activation=lambda x:x)
+    cell = tf.nn.rnn_cell.LSTMCell(10, activation=lambda x: x)
     state = cell.zero_state(batchsize, tf.float32)
     test_state = cell.zero_state(batchsize, tf.float32)
     output, state = tf.nn.static_rnn(cell, [tinputs], initial_state=state, dtype=tf.float32)
-    test_output, _ = tf.nn.static_rnn(cell, [test_input], initial_state=test_state, dtype=tf.float32)
     train_opt = tf.train.RMSPropOptimizer(1e-3).minimize(tf.reduce_mean(tf.abs(output - tgroundtruth)))
     gpu_options = tf.GPUOptions(allow_growth=True)
     with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placement=True)) as sess:
         sess.run(tf.global_variables_initializer())
         fig = plt.figure()
-        for epoch in range(5000):
+        for epoch in range(2001):
             sess.run(train_opt)
-            if not epoch % 50:
-                src, gt, pred = sess.run([test_var, test_gt, test_output[0]])
-                # update plotting
-                plt.cla()
-                fig.set_size_inches(7, 4)
-                plt.title(str(epoch))
-                plt.plot(src.ravel(), gt.ravel(), label='ground truth')
-                plt.plot(src.ravel(), pred.ravel(), label='predicted')
-                plt.ylim((-5, 5))
-                plt.xlim((src.ravel()[0], src.ravel()[-1]))
-                plt.legend(fontsize=15)
-                plt.draw()
-                plt.pause(0.1)
-                plt.savefig(r'G:\temp\blog\gif\\' + str(epoch) + '.png', dpi=100)
+            # sess.run(tf.initialize_variables([last_h, last_c]))
+            if not epoch % 500:
+                test_output, _ = tf.nn.static_rnn(cell, [test_input], initial_state=test_state,
+                                                           dtype=tf.float32)
+                for i in range(60):
+                    src, gt, pred = sess.run([test_var, test_gt, test_output[0]])
+                    # update plotting
+                    plt.cla()
+                    fig.set_size_inches(7, 4)
+                    plt.title(str(epoch)+'_'+str(i))
+                    plt.plot(src.ravel(), gt.ravel(), label='ground truth')
+                    plt.plot(src.ravel(), pred.ravel(), label='predicted')
+                    plt.ylim((-5, 5))
+                    plt.xlim((src.ravel()[0], src.ravel()[-1]))
+                    plt.legend(fontsize=15)
+                    plt.draw()
+                    plt.pause(0.05)
+                    # plt.savefig(r'G:\temp\blog\gif\\' + str(epoch) + '.png', dpi=100)
 
 
 if __name__ == '__main__':
